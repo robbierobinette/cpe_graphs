@@ -1,0 +1,7 @@
+*.pyc
+__pycache__
+.venv
+.vscode
+rcvcore
+out
+example_plots
