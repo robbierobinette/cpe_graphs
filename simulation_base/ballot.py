@@ -2,7 +2,7 @@
 Ballot representation for ranked choice voting.
 """
 from dataclasses import dataclass
-from typing import List, Optional, Set
+from typing import List, Set, Optional
 from .candidate import Candidate
 from .gaussian_generator import GaussianGenerator
 from .voter import Voter
@@ -20,13 +20,19 @@ class CandidateScore:
 class RCVBallot:
     """Ranked Choice Voting ballot."""
     voter: Voter
-    unsorted_candidates: List[CandidateScore]
     config: ElectionConfig
-    gaussian_generator: Optional[GaussianGenerator] = None
+    gaussian_generator: GaussianGenerator
     
     def __init__(self, voter: Voter, candidates: List[Candidate], 
                  config: ElectionConfig, gaussian_generator: GaussianGenerator):
-        """Initialize ballot with voter and candidates, computing scores internally."""
+        """Initialize ballot with voter and candidates.
+        
+        Args:
+            voter: The voter casting this ballot
+            candidates: List of candidates to rank
+            config: Election configuration
+            gaussian_generator: Random number generator for uncertainty and tie-breaking
+        """
         self.voter = voter
         self.config = config
         self.gaussian_generator = gaussian_generator
@@ -59,10 +65,9 @@ class RCVBallot:
     
     def _uncertainty(self, config: ElectionConfig) -> float:
         """Calculate uncertainty factor (moved from Voter.uncertainty)."""
-        rg = self.gaussian_generator()
-        return rg * config.uncertainty
+        return config.uncertainty * self.gaussian_generator()
     
-    def candidate(self, active_candidates: Set[Candidate]) -> Optional[Candidate]:
+    def candidate(self, active_candidates: List[Candidate]) -> Optional[Candidate]:
         """Get the highest-ranked active candidate."""
         for candidate_score in self.sorted_candidates:
             if candidate_score.candidate in active_candidates:

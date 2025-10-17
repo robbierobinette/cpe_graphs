@@ -19,9 +19,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.colors as mcolors
-from typing import List, Dict, Tuple
+from typing import List, Tuple
 from dataclasses import dataclass
-import math
 import argparse
 import sys
 
@@ -44,7 +43,8 @@ class IdeologyHistogram:
                  domain_min: float = None,
                  domain_max: float = None,
                  gradient_min: float = -1.5,
-                 gradient_max: float = 1.5):
+                 gradient_max: float = 1.5,
+                 title: str = "Histogram"):
         """
         Initialize the histogram parameters.
         
@@ -56,6 +56,7 @@ class IdeologyHistogram:
             domain_max: Maximum value (if None, will be calculated from data)
             gradient_min: Minimum value for blue in gradient (default: -1.5)
             gradient_max: Maximum value for red in gradient (default: 1.5)
+            title: Title for the histogram (default: "Histogram")
         """
         self.width = width
         self.height = height
@@ -65,6 +66,7 @@ class IdeologyHistogram:
         self.range = self.domain_max - self.domain_min
         self.gradient_min = gradient_min
         self.gradient_max = gradient_max
+        self.title = title
         
         # Calculate layout parameters similar to TypeScript code
         self.diameter = 2 * self.radius
@@ -153,18 +155,27 @@ class IdeologyHistogram:
         
         return circle_positions, bucket_counts
     
-    def create_histogram(self, data_points: List[DataPoint], x_labels: List[str] = None, output_filename: str = None, display: bool = False):
+    def create_histogram(self, data_points: List[DataPoint], x_labels: List[str] = None, x_label_values: List[float] = None, output_filename: str = None, display: bool = False, xlabel: str = 'Values'):
         """Create and save the histogram visualization."""
         # Calculate circle positions
         circle_positions, bucket_counts = self.calculate_circle_positions(data_points)
         
-        # Set y-axis height based on actual data, with some padding
-        max_height = max(bucket_counts) * self.spacing + 100  # Add padding for labels
+        # Set y-axis height based on actual data with padding for title and labels
+        max_bucket_height = max(bucket_counts) * self.spacing
+        padding = 100  # Space for title and labels
+        max_height = max_bucket_height + padding
         
-        # Create figure and axis
-        fig, ax = plt.subplots(figsize=(self.width/100, max_height/100), dpi=100)
+        # Create figure with fixed aspect ratio to prevent circle distortion
+        # Use a minimum height to ensure circles don't get too distorted
+        min_height = 400  # Minimum figure height in pixels
+        actual_height = max(max_height, min_height)
+        
+        fig, ax = plt.subplots(figsize=(self.width/100, actual_height/100), dpi=100)
         ax.set_xlim(0, self.width)
         ax.set_ylim(0, max_height)
+        
+        # Set equal aspect ratio to prevent circle distortion
+        ax.set_aspect('equal', adjustable='box')
         
         # Draw circles for each data point
         for x, y, data_point in circle_positions:
@@ -179,17 +190,26 @@ class IdeologyHistogram:
         if x_labels is None:
             x_labels = [''] * self.n_buckets
         
-        # Map labels across the domain
-        label_positions = np.linspace(0, self.width, len(x_labels))
+        # Map labels to their proper positions based on their values
+        if x_label_values is not None:
+            # Calculate positions based on actual values in the domain
+            label_positions = []
+            for val in x_label_values:
+                # Convert value to x position: (value - domain_min) / range * width
+                x_pos = (val - self.domain_min) / self.range * self.width
+                label_positions.append(x_pos)
+        else:
+            # Fall back to evenly distributed labels
+            label_positions = np.linspace(0, self.width, len(x_labels))
         
         ax.set_xticks(label_positions)
         ax.set_xticklabels(x_labels)
-        ax.set_xlabel('Values', fontsize=12)
+        ax.set_xlabel(xlabel, fontsize=12)
         
         # Remove y-axis tick labels but keep the axis
         ax.set_yticks([])
         ax.set_ylabel('Count', fontsize=12)
-        ax.set_title('Histogram', fontsize=14, fontweight='bold')
+        ax.set_title(self.title, fontsize=14, fontweight='bold')
         
         # No legend needed for gradient coloring
         
@@ -218,7 +238,7 @@ class IdeologyHistogram:
         
         # Print some statistics
         values = [dp.value for dp in data_points]
-        print(f"\nStatistics:")
+        print("\nStatistics:")
         print(f"Total data points: {len(data_points)}")
         print(f"Average value: {np.mean(values):.3f}")
         print(f"Value range: {np.min(values):.3f} to {np.max(values):.3f}")
@@ -231,24 +251,38 @@ class IdeologyHistogram:
                 if dp.label:
                     label_counts[dp.label] = label_counts.get(dp.label, 0) + 1
             
-            print(f"\nLabel breakdown:")
+            print("\nLabel breakdown:")
             for label, count in sorted(label_counts.items()):
                 print(f"{label}: {count} ({count/len(data_points)*100:.1f}%)")
 
 
-def load_ideology_data(filename: str) -> Tuple[List[float], List[str]]:
-    """Load ideology data from JSON file and return values and labels."""
+def load_ideology_data(filename: str, use_nominate: bool = False) -> Tuple[List[float], List[str]]:
+    """Load ideology data from JSON file and return values and labels.
+    
+    Args:
+        filename: Path to JSON file with district results
+        use_nominate: If True, use nominate_dim1 values; if False, use winner_ideology
+    
+    Returns:
+        Tuple of (values, party_labels)
+    """
     with open(filename, 'r') as f:
         data = json.load(f)
     
     values = []
-    labels = []
+    party = []
     
     for district_result in data['district_results']:
-        values.append(district_result['winner_ideology'])
-        labels.append(district_result['winner_party'])
+        if use_nominate:
+            # Use nominate_dim1 if available, otherwise skip
+            if 'nominate_dim1' in district_result:
+                values.append(district_result['nominate_dim1'])
+                party.append(district_result['winner_party'])
+        else:
+            values.append(district_result['winner_ideology'])
+            party.append(district_result['winner_party'])
     
-    return values, labels
+    return values, party
 
 
 def main():
@@ -267,27 +301,76 @@ def main():
                        help='Minimum domain value (default: -2.5)')
     parser.add_argument('--max', type=float, default=2.5,
                        help='Maximum domain value (default: 2.5)')
+    parser.add_argument('--title', type=str, default='Histogram',
+                       help='Title for the histogram (default: "Histogram")')
+    parser.add_argument('--xlabel', type=str, default='Member Partisanship',
+                       help='Label for the x-axis (default: "Member Partisanship")')
+    parser.add_argument('--labels', type=str, default="",
+                       help='Labels for the histogram (default: is numeric lables if not specified)')
+    parser.add_argument('--nominate', action='store_true',
+                       help='Use nominate_dim1 values instead of winner_ideology (typically ranges from -1 to 1)')
     
     args = parser.parse_args()
     
-    print(f"Generating ideology histogram from {args.json_file}...")
+    # Adjust defaults for nominate mode
+    if args.nominate:
+        print(f"Generating NOMINATE histogram from {args.json_file}...")
+        # If min/max are at defaults, adjust them for nominate range
+        if args.min == -2.5 and args.max == 2.5:
+            args.min = -1.0
+            args.max = 1.0
+    else:
+        print(f"Generating ideology histogram from {args.json_file}...")
     
+    gradient_min = -1.5
+    gradient_max = 1.5
+    if args.nominate:
+        gradient_min = -0.5
+        gradient_max = 0.5
+
     # Create histogram generator with custom domain and radius
-    histogram = IdeologyHistogram(radius=args.radius, domain_min=args.min, domain_max=args.max)
+    histogram = IdeologyHistogram(radius=args.radius, 
+                    domain_min=args.min, 
+                    domain_max=args.max, 
+                    gradient_min=gradient_min,
+                    gradient_max=gradient_max,
+                    title=args.title)
     
     try:
         # Load data from JSON file
-        values, labels = load_ideology_data(args.json_file)
+        values, party = load_ideology_data(args.json_file, use_nominate=args.nominate)
         print(f"Loaded {len(values)} data points")
         
+        # Check if we have any data
+        if len(values) == 0:
+            if args.nominate:
+                print("Error: No nominate_dim1 values found in the JSON file.")
+                print("The --nominate flag requires data with nominate_dim1 fields.")
+                print("Try running without --nominate to use winner_ideology values instead.")
+            else:
+                print("Error: No winner_ideology values found in the JSON file.")
+            sys.exit(1)
+        
         # Create data points (colors will be generated from gradient)
-        data_points = histogram.create_data_points(values, labels)
+        data_points = histogram.create_data_points(values, party)
         
         # Define ideology labels for x-axis
-        ideology_labels = ['Very Liberal', 'Liberal', 'Balanced', 'Conservative', 'Very Conservative']
-        
+        if args.labels:
+            ideology_labels = args.labels.split(",")
+            ideology_values = None  # User-provided labels, evenly distribute them
+        else:
+            # Generate numeric labels based on mode
+            if args.nominate:
+                # For nominate mode, use -1 to 1 range
+                ideology_labels = ['-1.0', '-0.5', '0.0', '0.5', '1.0']
+                ideology_values = [-1.0, -0.5, 0.0, 0.5, 1.0]
+            else:
+                # For winner_ideology mode, use -2 to 2 range
+                ideology_labels = ['-2', '-1', '0', '1', '2']
+                ideology_values = [-2.0, -1.0, 0.0, 1.0, 2.0]
+
         # Generate histogram
-        histogram.create_histogram(data_points, ideology_labels, args.output, args.display)
+        histogram.create_histogram(data_points, ideology_labels, ideology_values, args.output, args.display, args.xlabel)
         
     except FileNotFoundError:
         print(f"Error: {args.json_file} not found.")
