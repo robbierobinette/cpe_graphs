@@ -52,7 +52,7 @@ class ElectionWithPrimaryResult(ElectionResult):
 class ElectionWithPrimary(ElectionProcess):
     """Election process with separate Democratic and Republican primaries."""
     
-    def __init__(self, primary_skew: float = 0.5, debug: bool = False):
+    def __init__(self, primary_skew: float, debug: bool):
         """Initialize primary election process."""
         self.primary_skew = primary_skew
         self.debug = debug
@@ -143,7 +143,7 @@ class ElectionWithPrimary(ElectionProcess):
     def _run_primary(self, candidates: List[Candidate], ballots: List[RCVBallot]) -> ElectionResult:
         """Run a primary election."""
         # Use simple plurality for primaries
-        primary_process = SimplePlurality()
+        primary_process = SimplePlurality(debug=self.debug)
         return primary_process.run(candidates, ballots)
     
     def _run_general(self, candidates: List[Candidate], ballots: List[RCVBallot]) -> ElectionResult:

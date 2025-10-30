@@ -4,7 +4,6 @@ Composable election process implementation.
 from typing import List
 from .election_result import ElectionResult, CandidateResult
 from .election_process import ElectionProcess
-from .election_definition import ElectionDefinition
 from .candidate import Candidate
 from .ballot import RCVBallot
 
@@ -31,10 +30,10 @@ class ComposableElectionResult(ElectionResult):
         return self.general_result.ordered_results()
     def print_details(self):
         """Print details of the composable election result."""
-        print(f"Composable election result:")
-        print(f"Primary result:")
+        print("Composable election result:")
+        print("Primary result:")
         self.primary_result.print_details()
-        print(f"General result:")
+        print("General result:")
         self.general_result.print_details()
     
     @property
@@ -46,7 +45,7 @@ class ComposableElectionResult(ElectionResult):
 class ComposableElection(ElectionProcess):
     """Composable election process that runs a primary followed by a general election."""
     
-    def __init__(self, primary_process: ElectionProcess, general_process: ElectionProcess, debug: bool = False):
+    def __init__(self, primary_process: ElectionProcess, general_process: ElectionProcess, debug: bool):
         """Initialize composable election.
         
         Args:
